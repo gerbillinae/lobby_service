@@ -1,7 +1,7 @@
 import unittest
 import requests
 import json
-
+import time
 
 def read_sse(gen):
     buffer = ""
@@ -214,6 +214,10 @@ class TestExample(unittest.TestCase):
         self.assertEqual(rename_response.status_code, 400)
         rename_data = json.loads(rename_response.text)
         self.assertTrue("error" in rename_data)
+
+        time.sleep(11)
+        info_response = requests.get(url+"/info", info_request)
+        self.assertEqual(info_response.status_code, 400)
 
 if __name__ == "__main__":
     unittest.main()

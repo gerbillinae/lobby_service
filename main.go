@@ -14,6 +14,13 @@ import (
 	"time"
 )
 
+// temporary protection
+const (
+	MAX_ROOMS    = 500
+	MAX_USERS    = 20
+	MAX_INFO_LEN = 1024
+)
+
 const (
 	EVENT_DISCONNECTED = "disconnected"
 	EVENT_USER_ADDED   = "user_added"
@@ -40,25 +47,42 @@ const (
 )
 
 type Room struct {
-	next_user_id   int         `json:"-"`
-	mutex          sync.Mutex  `json:"-"`
-	state          int         `json:"-"` // Room state
-	Users          []*User     `json:"users"`
-	CreationInfo   string      `json:"creation_info"`
-	CompletionInfo string      `json:"completion_info,omitempty"`
-	CreatedAt      time.Time   `json:"-"`
-	TTLTimer       *time.Timer `json:"-"`
+	next_user_id   int        `json:"-"`
+	mutex          sync.Mutex `json:"-"`
+	state          int        `json:"-"` // Room state
+	Users          []*User    `json:"users"`
+	CreationInfo   string     `json:"creation_info"`
+	CompletionInfo string     `json:"completion_info,omitempty"`
+
+	CreatedAt  time.Time   `json:"-"`
+	TimeToLive time.Time   `json:"-"`
+	TTLTimer   *time.Timer `json:"-"`
 }
 
 func delete_room(room_id string) {
+	log.Printf("delete_room %s", room_id)
 	RoomsMutex.Lock()
-	defer RoomsMutex.Unlock()
-	delete(Rooms, room_id)
+	room := Rooms[room_id]
+	if room != nil {
+		delete(Rooms, room_id)
+		RoomsMutex.Unlock()
+		room.Close()
+		return
+	}
+	RoomsMutex.Unlock()
 }
 
-func init_room(creationInfo string) (string, *Room) {
+func init_room(creationInfo string) (string, *Room, error) {
 	RoomsMutex.Lock()
 	defer RoomsMutex.Unlock()
+
+	if len(creationInfo) >= MAX_INFO_LEN {
+		return "", nil, errors.New("Max info length exceeded")
+	}
+
+	if len(Rooms) >= MAX_ROOMS {
+		return "", nil, errors.New("Max room limit reached")
+	}
 
 	room_id := new_room_id(4)
 	for Rooms[room_id] != nil {
@@ -66,15 +90,38 @@ func init_room(creationInfo string) (string, *Room) {
 	}
 
 	now := time.Now()
-	room := &Room{CreationInfo: creationInfo, state: ROOM_OPEN, CreatedAt: now, TTLTimer: time.AfterFunc(time.Minute*5, func() {
+	ttl := now.Add(time.Minute * 5)
+	timer := time.AfterFunc(time.Minute*5, func() {
 		delete_room(room_id)
-	})}
+	})
+
+	room := &Room{CreationInfo: creationInfo, state: ROOM_OPEN, CreatedAt: now, TimeToLive: ttl, TTLTimer: timer}
 
 	Rooms[room_id] = room
-	return room_id, room
+	return room_id, room, nil
 }
 
-func (room *Room) Complete(completionInfo string) error {
+func (room *Room) Close() {
+	room.mutex.Lock()
+	defer room.mutex.Unlock()
+
+	ntf := struct {
+		MessageType string `json:"message_type"`
+		Reason      string `json:"reason"`
+	}{
+		MessageType: EVENT_DISCONNECTED,
+		Reason:      "closed",
+	}
+
+	for _, user := range room.Users {
+		select {
+		case user.events <- ntf:
+		default:
+		}
+	}
+}
+
+func (room *Room) Complete(room_id string, completionInfo string) error {
 	room.mutex.Lock()
 	defer room.mutex.Unlock()
 
@@ -82,8 +129,23 @@ func (room *Room) Complete(completionInfo string) error {
 		return errors.New("Room already complete")
 	}
 
+	if len(completionInfo) >= MAX_INFO_LEN {
+		return errors.New("Max info length exceeded")
+	}
+
+	if !(room.state == ROOM_OPEN || room.state == ROOM_LOCKED) {
+		return errors.New("Expected room to be open or locked before completing")
+	}
+
 	room.state = ROOM_COMPLETE
 	room.CompletionInfo = completionInfo
+
+	room.TTLTimer.Stop()
+	now := time.Now()
+	room.TimeToLive = now.Add(time.Second * 10)
+	room.TTLTimer = time.AfterFunc(time.Second*10, func() {
+		delete_room(room_id)
+	})
 
 	ntf := struct {
 		MessageType    string `json:"message_type"`
@@ -105,6 +167,10 @@ func (room *Room) Complete(completionInfo string) error {
 func (room *Room) Join(name string) (int, string, error) {
 	room.mutex.Lock()
 	defer room.mutex.Unlock()
+
+	if len(room.Users) >= MAX_USERS {
+		return -1, "", errors.New("Max user limit reached")
+	}
 
 	if room.state != ROOM_OPEN {
 		return -1, "", errors.New("Room cannot be joined")
@@ -268,7 +334,12 @@ func main() {
 
 		name := requestData["name"]
 
-		room_id, room := init_room(creation_info)
+		room_id, room, err := init_room(creation_info)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
 		id, token, err := room.Join(name)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -401,7 +472,7 @@ func main() {
 			return
 		}
 
-		err = room.Complete(completion_info)
+		err = room.Complete(room_id, completion_info)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
