@@ -7,6 +7,8 @@ import sys
 from typing import Any
 from collections.abc import Iterator
 
+DEFAULT_TIMEOUT = 1000
+
 def read_sse(gen : Iterator[str]):
     buffer = ""
     for line in gen:
@@ -48,7 +50,7 @@ class Test(unittest.TestCase):
         # Wait for server to be ready
         for i in range(5):
             try:
-                ping_response = requests.get(url+"/ping")
+                ping_response = requests.get(url+"/ping", timeout=1000)
                 if ping_response.status_code == 200:
                     break
             except:
@@ -63,7 +65,7 @@ class Test(unittest.TestCase):
             "creation_info": "CREATION_INFO"
         }
 
-        create_response = requests.post(url+"/create", json=create_request)
+        create_response = requests.post(url+"/create", json=create_request, timeout=DEFAULT_TIMEOUT)
 
         self.assertEqual(create_response.status_code, 200)
         creation_data = json.loads(create_response.text)
@@ -76,7 +78,7 @@ class Test(unittest.TestCase):
         }
 
         # Open a streaming connection to the server
-        events_response = requests.get(url+"/events", events_request, stream=True)
+        events_response = requests.get(url+"/events", events_request, stream=True, timeout=DEFAULT_TIMEOUT)
         events_generator = events_response.iter_lines(decode_unicode=True)
 
         # Check if the server supports SSE
@@ -92,7 +94,7 @@ class Test(unittest.TestCase):
             "room": creation_data["room"]
         }
 
-        join_response = requests.post(url+"/join", json=join_request)
+        join_response = requests.post(url+"/join", json=join_request, timeout=DEFAULT_TIMEOUT)
         self.assertEqual(join_response.status_code, 200)
         join_data = json.loads(join_response.text)
         self.assertEqual(join_data["status"], "success")
@@ -114,7 +116,7 @@ class Test(unittest.TestCase):
             "token": join_data["token"]
         }
 
-        info_response = requests.get(url+"/info", info_request)
+        info_response = requests.get(url+"/info", info_request, timeout=DEFAULT_TIMEOUT)
 
         self.assertEqual(info_response.status_code, 200)
         info_data = json.loads(info_response.text)
@@ -134,7 +136,7 @@ class Test(unittest.TestCase):
             "name": "Luigi"
         }
 
-        rename_response = requests.post(url+"/name", json=rename_request)
+        rename_response = requests.post(url+"/name", json=rename_request, timeout=DEFAULT_TIMEOUT)
         self.assertEqual(rename_response.status_code, 200)
         rename_data = json.loads(rename_response.text)
         self.assertEqual(rename_data["status"], "success")
@@ -151,7 +153,7 @@ class Test(unittest.TestCase):
             "token": join_data["token"]
         }
 
-        info_response = requests.get(url+"/info", info_request)
+        info_response = requests.get(url+"/info", info_request, timeout=DEFAULT_TIMEOUT)
 
         self.assertEqual(info_response.status_code, 200)
         info_data = json.loads(info_response.text)
@@ -167,7 +169,7 @@ class Test(unittest.TestCase):
             "completion_info": "COMPLETION_INFO"
         }
 
-        complete_response = requests.post(url+"/complete", json=complete_request)
+        complete_response = requests.post(url+"/complete", json=complete_request, timeout=DEFAULT_TIMEOUT)
 
         self.assertEqual(complete_response.status_code, 400)
         complete_data = json.loads(complete_response.text)
@@ -179,7 +181,7 @@ class Test(unittest.TestCase):
             "completion_info": "COMPLETION_INFO"
         }
 
-        complete_response = requests.post(url+"/complete", json=complete_request)
+        complete_response = requests.post(url+"/complete", json=complete_request, timeout=DEFAULT_TIMEOUT)
 
         # Then a join event is recieved for the new user
         complete_event = load_sse_json_data(read_sse(events_generator))
@@ -196,7 +198,7 @@ class Test(unittest.TestCase):
         complete_data = json.loads(complete_response.text)
         self.assertEqual(complete_data["status"], "success")
 
-        info_response = requests.get(url+"/info", info_request)
+        info_response = requests.get(url+"/info", info_request, timeout=DEFAULT_TIMEOUT)
 
         self.assertEqual(info_response.status_code, 200)
         info_data = json.loads(info_response.text)
@@ -213,7 +215,7 @@ class Test(unittest.TestCase):
             "room": creation_data["room"]
         }
 
-        join_response = requests.post(url+"/join", json=join_request)
+        join_response = requests.post(url+"/join", json=join_request, timeout=DEFAULT_TIMEOUT)
         self.assertEqual(join_response.status_code, 400)
         join_data = json.loads(join_response.text)
         self.assertTrue("error" in join_data)
@@ -226,13 +228,13 @@ class Test(unittest.TestCase):
             "name": "Luigi"
         }
 
-        rename_response = requests.post(url+"/name", json=rename_request)
+        rename_response = requests.post(url+"/name", json=rename_request, timeout=DEFAULT_TIMEOUT)
         self.assertEqual(rename_response.status_code, 400)
         rename_data = json.loads(rename_response.text)
         self.assertTrue("error" in rename_data)
 
         time.sleep(11)
-        info_response = requests.get(url+"/info", info_request)
+        info_response = requests.get(url+"/info", info_request, timeout=DEFAULT_TIMEOUT)
         self.assertEqual(info_response.status_code, 400)
 
 if __name__ == "__main__":
