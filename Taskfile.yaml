@@ -1,0 +1,39 @@
+version: '3'
+
+dotenv: ['.env']
+
+tasks:
+  package:
+    preconditions:
+      - sh: test -n "${SERVICE_NAME}"
+        msg: "The SERVICE_NAME environment variable is not set. Check your .env file."
+    cmds:
+      - GOOS=linux GOARCH=amd64 go build -o main ./main.go
+      - docker build --platform linux/amd64 -t ${SERVICE_NAME} -f ./Dockerfile .
+
+  package-test:
+    preconditions:
+      - sh: test -n "${SERVICE_NAME}"
+        msg: "The SERVICE_NAME environment variable is not set. Check your .env file."
+    cmds:
+      - docker run -d -p 8080:8080 ${SERVICE_NAME}
+      - defer: docker ps -a | grep ${SERVICE_NAME} | awk '{print $1}' | xargs -n 1 docker kill | xargs -n 1 docker remove
+      - python3 test.py --address "http://localhost:8080"
+
+  package-push:
+    preconditions:
+      - sh: test -n "${SERVICE_NAME}"
+        msg: "The SERVICE_NAME environment variable is not set. Check your .env file."
+      - sh: test -n "${CONTAINER_REGISTRY}"
+        msg: "The CONTAINER_REGISTRY environment variable is not set. Check your .env file."
+    cmds:
+      - docker tag ${SERVICE_NAME}:latest ${CONTAINER_REGISTRY}:latest
+      - docker push ${CONTAINER_REGISTRY}:latest
+
+  deployment-test:
+    preconditions:
+      - sh: test -n "${DEPLOYMENT_URL}"
+        msg: "The DEPLOYMENT_URL environment variable is not set. Check your .env file."
+    cmds:
+      - python3 test.py --address "${DEPLOYMENT_URL}"
+

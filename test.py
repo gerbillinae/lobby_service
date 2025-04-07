@@ -2,8 +2,12 @@ import unittest
 import requests
 import json
 import time
+import argparse
+import sys
+from typing import Any
+from collections.abc import Iterator
 
-def read_sse(gen):
+def read_sse(gen : Iterator[str]):
     buffer = ""
     for line in gen:
         if line.strip() == "":
@@ -13,7 +17,7 @@ def read_sse(gen):
     return buffer
 
 # Parse N sse messages with json payloads
-def load_sse_json_data(msg):
+def load_sse_json_data(msg : str) -> list[Any]:
     entries = []
 
     event = ""
@@ -32,15 +36,27 @@ def load_sse_json_data(msg):
 
     return entries
 
-class TestExample(unittest.TestCase):
+class Test(unittest.TestCase):
 
+    address : str = ""
     # Basic test of the happy-path
     def test_expected_path(self):
 
         # URL to send the POST request
-        url = "http://localhost:8080"
+        url = Test.address
 
-        print("CREATE")
+        # Wait for server to be ready
+        for i in range(5):
+            try:
+                ping_response = requests.get(url+"/ping")
+                if ping_response.status_code == 200:
+                    break
+            except:
+                pass
+            time.sleep(1000)
+
+
+        #print("CREATE")
         # Data to be sent in the POST request
         create_request = {
             "name": "admin",
@@ -53,7 +69,7 @@ class TestExample(unittest.TestCase):
         creation_data = json.loads(create_response.text)
         self.assertEqual(creation_data["status"], "success")
 
-        print("GET EVENTS")
+        #print("GET EVENTS")
         events_request = {
             "room": creation_data["room"],
             "token": creation_data["token"]
@@ -69,7 +85,7 @@ class TestExample(unittest.TestCase):
         self.assertEqual(events_response.headers.get("Connection"), "keep-alive")
         self.assertEqual(events_response.headers.get("Transfer-Encoding"), "chunked")
 
-        print("JOIN")
+        #print("JOIN")
         # When a join request is made ...
         join_request = {
             "name": "Mario",
@@ -220,4 +236,17 @@ class TestExample(unittest.TestCase):
         self.assertEqual(info_response.status_code, 400)
 
 if __name__ == "__main__":
-    unittest.main()
+    # Create an argument parser
+    parser = argparse.ArgumentParser(description="A script that processes CLI arguments.")
+
+    # Add arguments
+    parser.add_argument("--address", type=str, required=True, help="URL or IP of the server")
+
+    # Parse the arguments
+    args, unknown_args = parser.parse_known_args()
+
+    # Access the arguments
+    print("Address:", args.address)
+    Test.address = args.address
+
+    unittest.main(argv=[sys.argv[0]]+unknown_args)
