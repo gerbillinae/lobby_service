@@ -1,24 +1,28 @@
 version: '3'
 
-dotenv: ['.env']
+dotenv: ['.env',  '.public.env']
 
 tasks:
   package:
     preconditions:
       - sh: test -n "${SERVICE_NAME}"
         msg: "The SERVICE_NAME environment variable is not set. Check your .env file."
+      - sh: test -n "${ARCH}"
+        msg: "The ARCH environment variable is not set. Check your .env file."
     cmds:
-      - GOOS=linux GOARCH=amd64 go build -o main ./main.go
-      - docker build --platform linux/amd64 -t ${SERVICE_NAME} -f ./Dockerfile .
+      - GOOS=linux GOARCH=${ARCH} go build -o main ./main.go
+      - docker build --platform linux/${ARCH} -t ${SERVICE_NAME} -f ./Dockerfile .
 
   package-test:
     preconditions:
       - sh: test -n "${SERVICE_NAME}"
         msg: "The SERVICE_NAME environment variable is not set. Check your .env file."
+      - sh: test -n "${LOCAL_URL}"
+        msg: "The LOCAL_URL environment variable is not set. Check your .env file."
     cmds:
       - docker run -d -p 8080:8080 ${SERVICE_NAME}
       - defer: docker ps -a | grep ${SERVICE_NAME} | awk '{print $1}' | xargs -n 1 docker kill | xargs -n 1 docker remove
-      - python3 test.py --address "http://localhost:8080"
+      - python3 test.py --address "${LOCAL_URL}"
 
   package-push:
     preconditions:
