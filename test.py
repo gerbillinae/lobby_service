@@ -50,12 +50,17 @@ class Test(unittest.TestCase):
         # Wait for server to be ready
         for i in range(5):
             try:
+                print("Attempting to connected.")
                 ping_response = requests.get(url+"/ping", timeout=1000)
                 if ping_response.status_code == 200:
+                    print("Connected.")
                     break
             except:
+                print("Failed to connect.")
                 pass
-            time.sleep(1000)
+            time.sleep(1)
+            print("Beginning test.")
+
 
 
         #print("CREATE")
