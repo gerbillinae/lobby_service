@@ -12,9 +12,9 @@ tasks:
     dotenv: ['.public.env', '.deployment.env']
     cmds:
       - GOOS=linux GOARCH=${ARCH} go build -o main ./main.go
-      - docker build --platform linux/${ARCH} -t ${IMAGE_NAME} -f ./Dockerfile .
-      - docker tag ${IMAGE_NAME}:latest ${IMAGE_NAMESPACE}/${IMAGE_NAME}:latest
-      - echo ${IMAGE_NAMESPACE}/${IMAGE_NAME}:latest
+      - docker build --platform linux/${ARCH} -t ${IMAGE_NAMESPACE}/${IMAGE_NAME}:latest  -f ./Dockerfile .
+      - docker tag ${IMAGE_NAMESPACE}/${IMAGE_NAME}:latest ${IMAGE_NAMESPACE}/${IMAGE_NAME}:$(git rev-parse HEAD)
+      - echo ${IMAGE_NAMESPACE}/${IMAGE_NAME}:$(git rev-parse --short HEAD)
       - task: _package_test
 
   _push_container_to_aws_ecr:
@@ -22,15 +22,15 @@ tasks:
     cmds:
       - aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${CONTAINER_REGISTRY}
       - aws ecr create-repository --repository-name ${IMAGE_NAMESPACE}/${IMAGE_NAME} || true
-      - docker tag ${IMAGE_NAMESPACE}/${IMAGE_NAME}:latest ${CONTAINER_REGISTRY}/${IMAGE_NAMESPACE}/${IMAGE_NAME}:latest
-      - docker push ${CONTAINER_REGISTRY}/${IMAGE_NAMESPACE}/${IMAGE_NAME}:latest
+      - docker tag ${IMAGE_NAMESPACE}/${IMAGE_NAME}:$(git rev-parse HEAD) ${CONTAINER_REGISTRY}/${IMAGE_NAMESPACE}/${IMAGE_NAME}:$(git rev-parse HEAD)
+      - docker push ${CONTAINER_REGISTRY}/${IMAGE_NAMESPACE}/${IMAGE_NAME}:$(git rev-parse HEAD)
 
   _generate_deployment_files:
     dotenv: ['.deployment.env', '.public.env']
     cmds:
       - rm -r deployment || true
       - mkdir deployment
-      - go run ./tools/hydrate.go ./k8s-deployment.template.yaml > ./deployment/k8s-deployment.yaml
+      - IMAGE_VERSION=$(git rev-parse HEAD) go run ./tools/hydrate.go ./k8s-deployment.template.yaml > ./deployment/k8s-deployment.yaml
 
   deploy:
     dotenv: ['.deployment.env']
