@@ -311,6 +311,262 @@ func new_room_id(length int) string {
 	return string(result)
 }
 
+func handle_ping(c *gin.Context) {
+	c.JSON(200, gin.H{"message": "pong"})
+}
+
+func handle_create(c *gin.Context) {
+	var requestData map[string]string
+	if err := c.BindJSON(&requestData); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON"})
+		return
+	}
+
+	creation_info := requestData["creation_info"]
+	if creation_info == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Missing creation_info"})
+		return
+	}
+
+	name := requestData["name"]
+
+	room_id, room, err := init_room(creation_info)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	id, token, err := room.Join(name)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	Rooms[room_id] = room
+
+	c.JSON(http.StatusOK, gin.H{"status": "success", "room": room_id, "user_id": id, "token": token})
+}
+func handle_join(c *gin.Context) {
+	var requestData map[string]string
+	if err := c.BindJSON(&requestData); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON"})
+		return
+	}
+
+	room_id := requestData["room"]
+	if room_id == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "`room` is mandatory"})
+		return
+	}
+
+	name := requestData["name"]
+
+	func() {
+		RoomsMutex.Lock()
+		defer RoomsMutex.Unlock()
+		room := Rooms[room_id]
+
+		if room == nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Room not found"})
+			return
+		}
+
+		id, token, err := room.Join(name)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"status": "success", "id": id, "token": token, "info": room.CreationInfo})
+	}()
+}
+
+func handle_name(c *gin.Context) {
+	var requestData map[string]string
+	if err := c.BindJSON(&requestData); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON"})
+		return
+	}
+
+	room_id := requestData["room"]
+	if room_id == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "`room` is mandatory"})
+		return
+	}
+
+	name := requestData["name"]
+	if name == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "`name` is mandatory"})
+		return
+	}
+
+	token := requestData["token"]
+	if token == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "`token` is mandatory"})
+		return
+	}
+
+	func() {
+		RoomsMutex.Lock()
+		defer RoomsMutex.Unlock()
+		room := Rooms[room_id]
+
+		if room == nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Room not found"})
+			return
+		}
+
+		err := room.Rename(token, name)
+
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"status": "success"})
+	}()
+}
+
+func handle_complete(c *gin.Context) {
+	var requestData map[string]string
+	if err := c.BindJSON(&requestData); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON"})
+		return
+	}
+
+	room_id := requestData["room"]
+	if room_id == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "`room` is mandatory"})
+		return
+	}
+
+	completion_info := requestData["completion_info"]
+	if completion_info == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "`completionInfo` is mandatory"})
+		return
+	}
+
+	token := requestData["token"]
+	if token == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "`token` is mandatory"})
+		return
+	}
+
+	room := get_room(room_id)
+
+	if room == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Room not found"})
+		return
+	}
+
+	id, err := room.GetPublicUserId(token)
+
+	if id != 0 || err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Permission denied"})
+		return
+	}
+
+	err = room.Complete(room_id, completion_info)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "success"})
+}
+
+func handle_info(c *gin.Context) {
+	room_id := c.Query("room")
+	if room_id == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "`room` is mandatory"})
+		return
+	}
+
+	token := c.Query("token")
+	if token == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "`token` is mandatory"})
+		return
+	}
+
+	room := get_room(room_id)
+
+	if room == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Room not found"})
+		return
+	}
+
+	if _, err := room.GetPublicUserId(token); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Permission Denied"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "success", "info": room})
+
+}
+
+func handle_events(c *gin.Context) {
+	log.Println("EVENTS")
+	room_id := c.Query("room")
+	if room_id == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "`room` is mandatory"})
+		return
+	}
+
+	token := c.Query("token")
+	if token == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "`token` is mandatory"})
+		return
+	}
+
+	log.Println("EVENTS GET ROOM")
+	room := get_room(room_id)
+
+	if room == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "room not found"})
+		return
+	}
+
+	if _, err := room.GetPublicUserId(token); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Permission Denied"})
+		return
+	}
+
+	log.Println("EVENTS GET CHAN")
+	user_chan, err := room.GetChannel(token)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("Transfer-Encoding", "chunked")
+	c.Writer.Flush()
+	log.Println("EVENTS FLUSH HEADERS")
+
+	c.Stream(func(w io.Writer) bool {
+
+		if msg, ok := <-user_chan; ok {
+
+			v := reflect.ValueOf(msg)
+			message_type_field := v.FieldByName("MessageType")
+
+			if !message_type_field.IsValid() || message_type_field.Kind() != reflect.String {
+				panic("Expected message_type on all notifications!")
+			}
+
+			msgType := message_type_field.String()
+			log.Printf("Sending notification of type: %s", msgType)
+
+			c.SSEvent(msgType, msg)
+
+			return msgType != EVENT_DISCONNECTED && msgType != EVENT_COMPLETE
+		}
+		return false
+	})
+}
+
 func main() {
 	port := flag.String("port", "8080", "Which port to listen on.")
 
@@ -324,275 +580,20 @@ func main() {
 		})
 	})
 
-	r.GET("/ping", func(c *gin.Context) {
-		c.JSON(200, gin.H{"message": "pong"})
-	})
+	r.GET("/ping", handle_ping)
 
-	r.GET("/", func(c *gin.Context) {
-		resp := struct {
-			Name    string `json:"name"`
-			Version string `json:"version"`
-		}{
-			Name:    "Lobby",
-			Version: "v0.0.1",
-		}
-		c.JSON(200, gin.H{"status": resp})
-	})
+	r.POST("/create", handle_create)
 
-	r.POST("/create", func(c *gin.Context) {
-		var requestData map[string]string
-		if err := c.BindJSON(&requestData); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON"})
-			return
-		}
+	r.POST("/join", handle_join)
 
-		creation_info := requestData["creation_info"]
-		if creation_info == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Missing creation_info"})
-			return
-		}
-
-		name := requestData["name"]
-
-		room_id, room, err := init_room(creation_info)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
-		}
-
-		id, token, err := room.Join(name)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
-		}
-
-		Rooms[room_id] = room
-
-		c.JSON(http.StatusOK, gin.H{"status": "success", "room": room_id, "user_id": id, "token": token})
-	})
-
-	r.POST("/join", func(c *gin.Context) {
-		var requestData map[string]string
-		if err := c.BindJSON(&requestData); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON"})
-			return
-		}
-
-		room_id := requestData["room"]
-		if room_id == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "`room` is mandatory"})
-			return
-		}
-
-		name := requestData["name"]
-
-		func() {
-			RoomsMutex.Lock()
-			defer RoomsMutex.Unlock()
-			room := Rooms[room_id]
-
-			if room == nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "Room not found"})
-				return
-			}
-
-			id, token, err := room.Join(name)
-			if err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-				return
-			}
-
-			c.JSON(http.StatusOK, gin.H{"status": "success", "id": id, "token": token, "info": room.CreationInfo})
-		}()
-	})
-
-	r.POST("/name", func(c *gin.Context) {
-		var requestData map[string]string
-		if err := c.BindJSON(&requestData); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON"})
-			return
-		}
-
-		room_id := requestData["room"]
-		if room_id == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "`room` is mandatory"})
-			return
-		}
-
-		name := requestData["name"]
-		if name == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "`name` is mandatory"})
-			return
-		}
-
-		token := requestData["token"]
-		if token == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "`token` is mandatory"})
-			return
-		}
-
-		func() {
-			RoomsMutex.Lock()
-			defer RoomsMutex.Unlock()
-			room := Rooms[room_id]
-
-			if room == nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "Room not found"})
-				return
-			}
-
-			err := room.Rename(token, name)
-
-			if err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-				return
-			}
-
-			c.JSON(http.StatusOK, gin.H{"status": "success"})
-		}()
-	})
+	r.POST("/name", handle_name)
 
 	// Lock a room, preventing new users from joining
-	r.POST("/complete", func(c *gin.Context) {
-		var requestData map[string]string
-		if err := c.BindJSON(&requestData); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON"})
-			return
-		}
+	r.POST("/complete", handle_complete)
 
-		room_id := requestData["room"]
-		if room_id == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "`room` is mandatory"})
-			return
-		}
+	r.GET("/info", handle_info)
 
-		completion_info := requestData["completion_info"]
-		if completion_info == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "`completionInfo` is mandatory"})
-			return
-		}
-
-		token := requestData["token"]
-		if token == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "`token` is mandatory"})
-			return
-		}
-
-		room := get_room(room_id)
-
-		if room == nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Room not found"})
-			return
-		}
-
-		id, err := room.GetPublicUserId(token)
-
-		if id != 0 || err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Permission denied"})
-			return
-		}
-
-		err = room.Complete(room_id, completion_info)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
-		}
-
-		c.JSON(http.StatusOK, gin.H{"status": "success"})
-	})
-
-	r.GET("/info", func(c *gin.Context) {
-		room_id := c.Query("room")
-		if room_id == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "`room` is mandatory"})
-			return
-		}
-
-		token := c.Query("token")
-		if token == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "`token` is mandatory"})
-			return
-		}
-
-		room := get_room(room_id)
-
-		if room == nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Room not found"})
-			return
-		}
-
-		if _, err := room.GetPublicUserId(token); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Permission Denied"})
-			return
-		}
-
-		c.JSON(http.StatusOK, gin.H{"status": "success", "info": room})
-
-	})
-
-	r.GET("/events", func(c *gin.Context) {
-		log.Println("EVENTS")
-		room_id := c.Query("room")
-		if room_id == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "`room` is mandatory"})
-			return
-		}
-
-		token := c.Query("token")
-		if token == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "`token` is mandatory"})
-			return
-		}
-
-		log.Println("EVENTS GET ROOM")
-		room := get_room(room_id)
-
-		if room == nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "room not found"})
-			return
-		}
-
-		if _, err := room.GetPublicUserId(token); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Permission Denied"})
-			return
-		}
-
-		log.Println("EVENTS GET CHAN")
-		user_chan, err := room.GetChannel(token)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
-		}
-
-		c.Writer.Header().Set("Content-Type", "text/event-stream")
-		c.Writer.Header().Set("Cache-Control", "no-cache")
-		c.Writer.Header().Set("Connection", "keep-alive")
-		c.Writer.Header().Set("Transfer-Encoding", "chunked")
-		c.Writer.Flush()
-		log.Println("EVENTS FLUSH HEADERS")
-
-		c.Stream(func(w io.Writer) bool {
-
-			if msg, ok := <-user_chan; ok {
-
-				v := reflect.ValueOf(msg)
-				message_type_field := v.FieldByName("MessageType")
-
-				if !message_type_field.IsValid() || message_type_field.Kind() != reflect.String {
-					panic("Expected message_type on all notifications!")
-				}
-
-				msgType := message_type_field.String()
-				log.Printf("Sending notification of type: %s", msgType)
-
-				c.SSEvent(msgType, msg)
-
-				return msgType != EVENT_DISCONNECTED && msgType != EVENT_COMPLETE
-			}
-			return false
-		})
-
-	})
+	r.GET("/events", handle_events)
 
 	r.Run(":" + *port)
 }
