@@ -12,6 +12,7 @@ tasks:
     dotenv: ['.public.env', '.deployment.env']
     cmds:
       - GOOS=linux GOARCH=${ARCH} go build -o main ./main.go
+      - IMAGE_VERSION=$(git rev-parse HEAD) go run ./tools/hydrate.go package.template.env > package.env
       - docker build --platform linux/${ARCH} -t ${IMAGE_NAMESPACE}/${IMAGE_NAME}:latest  -f ./Dockerfile .
       - docker tag ${IMAGE_NAMESPACE}/${IMAGE_NAME}:latest ${IMAGE_NAMESPACE}/${IMAGE_NAME}:$(git rev-parse HEAD)
       - echo ${IMAGE_NAMESPACE}/${IMAGE_NAME}:$(git rev-parse --short HEAD)

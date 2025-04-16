@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"errors"
 	"flag"
 	"github.com/gin-gonic/gin"
@@ -9,7 +10,9 @@ import (
 	"log"
 	"math/rand"
 	"net/http"
+	"os"
 	"reflect"
+	"strings"
 	"sync"
 	"time"
 )
@@ -311,10 +314,6 @@ func new_room_id(length int) string {
 	return string(result)
 }
 
-func handle_ping(c *gin.Context) {
-	c.JSON(200, gin.H{"message": "pong"})
-}
-
 func handle_create(c *gin.Context) {
 	var requestData map[string]string
 	if err := c.BindJSON(&requestData); err != nil {
@@ -569,6 +568,11 @@ func handle_events(c *gin.Context) {
 
 func main() {
 	port := flag.String("port", "8080", "Which port to listen on.")
+	flag.Parse()
+
+	loadEnvFile("package.env")
+	prefix := os.Getenv("PATH_PREFIX")
+	version := os.Getenv("IMAGE_VERSION")
 
 	r := gin.Default()
 
@@ -580,20 +584,56 @@ func main() {
 		})
 	})
 
-	r.GET("/ping", handle_ping)
+	r.GET(prefix+"/version", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"version": version})
+	})
 
-	r.POST("/create", handle_create)
+	r.POST(prefix+"/create", handle_create)
 
-	r.POST("/join", handle_join)
+	r.POST(prefix+"/join", handle_join)
 
-	r.POST("/name", handle_name)
+	r.POST(prefix+"/name", handle_name)
 
 	// Lock a room, preventing new users from joining
-	r.POST("/complete", handle_complete)
+	r.POST(prefix+"/complete", handle_complete)
 
-	r.GET("/info", handle_info)
+	r.GET(prefix+"/info", handle_info)
 
-	r.GET("/events", handle_events)
+	r.GET(prefix+"/events", handle_events)
 
 	r.Run(":" + *port)
+}
+
+func loadEnvFile(filePath string) error {
+	// Open the .env file
+	file, err := os.Open(filePath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	// Read the file line by line
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		// Skip empty lines and comments
+		if strings.TrimSpace(line) == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		// Split the line into key and value
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) != 2 {
+			continue // Invalid line, skip it
+		}
+
+		key := strings.TrimSpace(parts[0])
+		value := strings.TrimSpace(parts[1])
+
+		// Set the environment variable
+		os.Setenv(key, value)
+	}
+
+	return scanner.Err()
 }

@@ -4,10 +4,19 @@ import json
 import time
 import argparse
 import sys
+import os
 from typing import Any
 from collections.abc import Iterator
 
 DEFAULT_TIMEOUT = 1000
+
+def load_env_file(file_path):
+    with open(file_path, "r") as file:
+        for line in file:
+            if line.startswith("#") or not line.strip():
+                continue
+            key, value = line.strip().split("=", 1)
+            os.environ[key] = value
 
 def read_sse(gen : Iterator[str]):
     buffer = ""
@@ -44,16 +53,20 @@ class Test(unittest.TestCase):
     # Basic test of the happy-path
     def test_expected_path(self):
 
+        load_env_file("package.env")
+        prefix = os.environ["PATH_PREFIX"]
+
         # URL to send the POST request
-        url = Test.address
+        url = Test.address + prefix
 
         # Wait for server to be ready
         for i in range(5):
             try:
                 print("Attempting to connect...")
-                ping_response = requests.get(url+"/ping", timeout=1)
-                if ping_response.status_code == 200:
-                    print("Connected.")
+                version_response = requests.get(url+"/version", timeout=1)
+                if version_response.status_code == 200:
+                    version_data = json.loads(version_response.text)
+                    self.assertEqual(version_data["version"], os.environ["IMAGE_VERSION"])
                     break
             except:
                 print("Failed to connect")

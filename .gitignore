@@ -2,3 +2,5 @@ deployment
 main
 .env
 .idea
+package.env
+.deployment.env

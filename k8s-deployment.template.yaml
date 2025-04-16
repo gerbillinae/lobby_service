@@ -62,7 +62,7 @@ spec:
   rules:
     - http:
         paths:
-          - path: ${K8S_INGRESS_PATH}
+          - path: ${PATH_PREFIX}
             pathType: Prefix
             backend:
               service:
