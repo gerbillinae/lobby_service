@@ -315,8 +315,28 @@ func main() {
 	port := flag.String("port", "8080", "Which port to listen on.")
 
 	r := gin.Default()
+
+	r.NoRoute(func(c *gin.Context) {
+		c.JSON(http.StatusNotFound, gin.H{
+			"error":   "PAGE_NOT_FOUND",
+			"message": "The requested URL was not found on the server.",
+			"url":     c.Request.URL.String(),
+		})
+	})
+
 	r.GET("/ping", func(c *gin.Context) {
 		c.JSON(200, gin.H{"message": "pong"})
+	})
+
+	r.GET("/", func(c *gin.Context) {
+		resp := struct {
+			Name    string `json:"name"`
+			Version string `json:"version"`
+		}{
+			Name:    "Lobby",
+			Version: "v0.0.1",
+		}
+		c.JSON(200, gin.H{"status": resp})
 	})
 
 	r.POST("/create", func(c *gin.Context) {

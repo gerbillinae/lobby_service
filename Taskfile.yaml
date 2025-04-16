@@ -1,64 +1,49 @@
 version: '3'
 
-dotenv: ['.env',  '.public.env']
-
 tasks:
-  package:
-    preconditions:
-      - sh: test -n "${IMAGE_NAME}"
-        msg: "The IMAGE_NAME environment variable is not set. Check your .env file."
-      - sh: test -n "${IMAGE_NAMESPACE}"
-        msg: "The IMAGE_NAMESPACE environment variable is not set. Check your .env file."
-      - sh: test -n "${ARCH}"
-        msg: "The ARCH environment variable is not set. Check your .env file."
-    cmds:
-      - GOOS=linux GOARCH=${ARCH} go build -o main ./main.go
-      - docker build --platform linux/${ARCH} -t ${IMAGE_NAME} -f ./Dockerfile .
-      - docker tag ${IMAGE_NAME}:latest ${IMAGE_NAMESPACE}/${IMAGE_NAME}:latest
-      - echo ${IMAGE_NAMESPACE}/${IMAGE_NAME}:latest
-
-  package-test:
-    preconditions:
-      - sh: test -n "${IMAGE_NAME}"
-        msg: "The IMAGE_NAME environment variable is not set. Check your .env file."
-      - sh: test -n "${IMAGE_NAMESPACE}"
-        msg: "The IMAGE_NAMESPACE environment variable is not set. Check your .env file."
-      - sh: test -n "${LOCAL_URL}"
-        msg: "The LOCAL_URL environment variable is not set. Check your .env file."
+  _package_test:
+    dotenv: ['.public.env', '.deployment.env']
     cmds:
       - docker run -d -p 8080:8080 ${IMAGE_NAMESPACE}/${IMAGE_NAME}
       - defer: docker ps -a | grep ${IMAGE_NAMESPACE}/${IMAGE_NAME} | awk '{print $1}' | xargs -n 1 docker kill | xargs -n 1 docker remove
       - python3 test.py --address "${LOCAL_URL}"
 
-  package-push:
-    preconditions:
-      - sh: test -n "${IMAGE_NAME}"
-        msg: "The IMAGE_NAME environment variable is not set. Check your .env file."
-      - sh: test -n "${IMAGE_NAMESPACE}"
-        msg: "The IMAGE_NAMESPACE environment variable is not set. Check your .env file."
-      - sh: test -n "${CONTAINER_REGISTRY}"
-        msg: "The CONTAINER_REGISTRY environment variable is not set. Check your .env file."
+  package:
+    dotenv: ['.public.env', '.deployment.env']
     cmds:
-      - docker tag ${IMAGE_NAMESPACE}/${IMAGE_NAME}:latest ${CONTAINER_REGISTRY}:latest
-      - docker push ${CONTAINER_REGISTRY}:latest
+      - GOOS=linux GOARCH=${ARCH} go build -o main ./main.go
+      - docker build --platform linux/${ARCH} -t ${IMAGE_NAME} -f ./Dockerfile .
+      - docker tag ${IMAGE_NAME}:latest ${IMAGE_NAMESPACE}/${IMAGE_NAME}:latest
+      - echo ${IMAGE_NAMESPACE}/${IMAGE_NAME}:latest
+      - task: _package_test
 
-  package-local-push:
-    preconditions:
-      - sh: test -n "${IMAGE_NAME}"
-        msg: "The IMAGE_NAME environment variable is not set. Check your .env file."
-      - sh: test -n "${IMAGE_NAMESPACE}"
-        msg: "The IMAGE_NAMESPACE environment variable is not set. Check your .env file."
-      - sh: test -n "${CONTAINER_REGISTRY}"
-        msg: "The CONTAINER_REGISTRY environment variable is not set. Check your .env file."
+  _push_container_to_aws_ecr:
+    dotenv: ['.public.env', '.deployment.env']
     cmds:
-      - docker tag ${IMAGE_NAMESPACE}/${IMAGE_NAME}:latest localhost:5000/${IMAGE_NAMESPACE}/${IMAGE_NAME}:latest
-      - docker push localhost:5000/${IMAGE_NAMESPACE}/${IMAGE_NAME}:latest
-      - echo docker pull localhost:5000/${IMAGE_NAMESPACE}/${IMAGE_NAME}:latest
+      - aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${CONTAINER_REGISTRY}
+      - aws ecr create-repository --repository-name ${IMAGE_NAMESPACE}/${IMAGE_NAME} || true
+      - docker tag ${IMAGE_NAMESPACE}/${IMAGE_NAME}:latest ${CONTAINER_REGISTRY}/${IMAGE_NAMESPACE}/${IMAGE_NAME}:latest
+      - docker push ${CONTAINER_REGISTRY}/${IMAGE_NAMESPACE}/${IMAGE_NAME}:latest
+
+  _generate_deployment_files:
+    dotenv: ['.deployment.env', '.public.env']
+    cmds:
+      - rm -r deployment || true
+      - mkdir deployment
+      - go run ./tools/hydrate.go ./k8s-deployment.template.yaml > ./deployment/k8s-deployment.yaml
+
+  deploy:
+    dotenv: ['.deployment.env']
+    preconditions:
+      - sh: git diff-index --quiet HEAD || false
+        msg: "The current git repository is dirty."
+    cmds:
+      - task: package
+      - task: _generate_deployment_files
+      - task: _push_container_to_aws_ecr
+      - kubectl apply -f ./deployment/k8s-deployment.yaml
 
   deployment-test:
-    preconditions:
-      - sh: test -n "${DEPLOYMENT_URL}"
-        msg: "The DEPLOYMENT_URL environment variable is not set. Check your .env file."
+    dotenv: ['.deployment.env']
     cmds:
       - python3 test.py --address "${DEPLOYMENT_URL}"
-
