@@ -29,7 +29,7 @@ tasks:
   build:
     cmds:
       - mkdir build || true
-      - GOOS=linux GOARCH=${ARCH} go build -o build/main ./src/main.go
+      - cd app; GOOS=linux GOARCH=${ARCH} go build -o ../build/main ./src
       - IMAGE_VERSION=$(git rev-parse HEAD) ./.taskfile/bin/hydrate ./templates/package.template.env > build/package.env
 
   package:
@@ -51,7 +51,7 @@ tasks:
     cmds:
       - rm -r deployment || true
       - mkdir deployment
-      - IMAGE_VERSION=$(git rev-parse HEAD) ./.taskfile/bin/hydrate ./templates/k8s-deployment.template.yaml > ./deployment/k8s-deployment.yaml
+      - IMAGE_VERSION=$(git rev-parse HEAD) ./.taskfile/bin/hydrate ./templates/deployment.template.k8s.yaml > ./deployment/deployment.k8s.yaml
 
   deploy:
     preconditions:
@@ -61,7 +61,7 @@ tasks:
       - task: package
       - task: _generate_deployment_files
       - task: _push_container_to_aws_ecr
-      - kubectl apply -f ./deployment/k8s-deployment.yaml
+      - kubectl apply -f ./deployment/deployment.k8s.yaml
 
   deployment-test:
     cmds:
