@@ -1,0 +1,5 @@
+{
+  "port":"${APP_PORT}",
+  "version":"${IMAGE_VERSION}",
+  "path_prefix":"${PATH_PREFIX}"
+}

@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "lobby service config",
+  "type": "object",
+  "properties": {
+    "port": {
+      "type": "string",
+      "description": "Port used to serve the REST API"
+    },
+    "version": {
+      "type": "string",
+      "description": "Version to report"
+    },
+    "path_prefix": {
+      "type": "string",
+      "description": "Path prefix to remove from all calls"
+    }
+  },
+  "required": ["port", "version", "path_prefix"]
+}
+

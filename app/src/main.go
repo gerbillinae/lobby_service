@@ -1,7 +1,7 @@
 package main
 
 import (
-	"bufio"
+	"encoding/json"
 	"errors"
 	"flag"
 	"github.com/gin-gonic/gin"
@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"os"
 	"reflect"
-	"strings"
 	"sync"
 	"time"
 )
@@ -566,13 +565,44 @@ func handle_events(c *gin.Context) {
 	})
 }
 
+type Config struct {
+	Port       string `json:"port"`
+	Version    string `json:"version"`
+	PathPrefix string `json:"path_prefix"`
+}
+
+func load_config(path string) (*Config, error) {
+	file, err := os.Open(path)
+
+	if err != nil {
+		return nil, errors.New("Failed to open config file.")
+	}
+
+	defer file.Close()
+
+	config := &Config{}
+
+	err = json.NewDecoder(file).Decode(&config)
+
+	if err != nil {
+		return nil, errors.New("Failed to parse config file.")
+	}
+
+	return config, nil
+}
+
 func main() {
-	port := flag.String("port", "8080", "Which port to listen on.")
+	config_file := flag.String("config", "config.json", "path to `config.json`")
 	flag.Parse()
 
-	loadEnvFile("package.env")
-	prefix := os.Getenv("PATH_PREFIX")
-	version := os.Getenv("IMAGE_VERSION")
+	config, err := load_config(*config_file)
+	if err != nil {
+		log.Printf("Failed to load config.")
+		os.Exit(1)
+	}
+
+	prefix := config.PathPrefix
+	version := config.Version
 
 	r := gin.Default()
 
@@ -589,51 +619,12 @@ func main() {
 	})
 
 	r.POST(prefix+"/create", handle_create)
-
 	r.POST(prefix+"/join", handle_join)
-
 	r.POST(prefix+"/name", handle_name)
-
 	// Lock a room, preventing new users from joining
 	r.POST(prefix+"/complete", handle_complete)
-
 	r.GET(prefix+"/info", handle_info)
-
 	r.GET(prefix+"/events", handle_events)
 
-	r.Run(":" + *port)
-}
-
-func loadEnvFile(filePath string) error {
-	// Open the .env file
-	file, err := os.Open(filePath)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	// Read the file line by line
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := scanner.Text()
-
-		// Skip empty lines and comments
-		if strings.TrimSpace(line) == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-
-		// Split the line into key and value
-		parts := strings.SplitN(line, "=", 2)
-		if len(parts) != 2 {
-			continue // Invalid line, skip it
-		}
-
-		key := strings.TrimSpace(parts[0])
-		value := strings.TrimSpace(parts[1])
-
-		// Set the environment variable
-		os.Setenv(key, value)
-	}
-
-	return scanner.Err()
+	r.Run(":" + config.Port)
 }

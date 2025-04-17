@@ -2,10 +2,9 @@ FROM alpine:latest
 
 WORKDIR /root/
 
-COPY ./main .
-COPY ./package.env .
+COPY ./* .
 
-EXPOSE 8080
+EXPOSE ${APP_PORT}
 
 CMD ["./main"]
 

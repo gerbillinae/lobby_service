@@ -55,8 +55,6 @@ metadata:
     alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}]'
     alb.ingress.kubernetes.io/target-type: ip
     alb.ingress.kubernetes.io/group.name: ${K8S_INGRESS_GROUP_NAME}
-    alb.ingress.kubernetes.io/use-regex: "true"
-    alb.ingress.kubernetes.io/rewrite-target: "/$2"
 spec:
   ingressClassName: alb
   rules:

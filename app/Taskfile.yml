@@ -1,0 +1,8 @@
+version: '3'
+
+tasks:
+  build:
+    cmds:
+      - mkdir build || true
+      - go build -o ./build/main ./src
+      - cp config.schema.json build/.

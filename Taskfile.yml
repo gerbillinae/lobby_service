@@ -2,6 +2,11 @@ version: '3'
 
 dotenv: ['config.env']
 
+includes:
+  app:
+    taskfile: ./app/Taskfile.yml
+    dir: ./app
+
 tasks:
   _get_taskutils:
     cmds:
@@ -18,27 +23,29 @@ tasks:
     cmds:
       - task: _get_taskutils
 
-  _package_test:
+  test_package:
     dotenv: ['build/package.env']
     cmds:
-      - echo docker run -d -p 8080:8080 ${IMAGE_NAMESPACE}/${IMAGE_NAME}:${IMAGE_VERSION}
-      - docker run -d -p 8080:8080 ${IMAGE_NAMESPACE}/${IMAGE_NAME}:${IMAGE_VERSION}
+      - docker run -d -p 8080:8080 ${IMAGE_NAMESPACE}/${IMAGE_NAME}:$(git rev-parse HEAD)
       - defer: docker ps -a | grep ${IMAGE_NAMESPACE}/${IMAGE_NAME} | awk '{print $1}' | xargs -n 1 docker kill | xargs -n 1 docker remove
-      - python3 test/test.py --address "${LOCAL_URL}"
+      - python3 test/test.py --address "http://localhost:${APP_PORT}"
 
   build:
     cmds:
-      - mkdir build || true
-      - cd app; GOOS=linux GOARCH=${ARCH} go build -o ../build/main ./src
-      - IMAGE_VERSION=$(git rev-parse HEAD) ./.taskfile/bin/hydrate ./templates/package.template.env > build/package.env
+      - task: app:build
+      - rm -r ./build
+      - mv ./app/build .
+      - IMAGE_VERSION=$(git rev-parse HEAD) ./.taskfile/bin/hydrate ./templates/package.template.env > ./build/package.env
+      - IMAGE_VERSION=$(git rev-parse HEAD) ./.taskfile/bin/hydrate ./templates/config.template.json > ./build/config.json
+      - check-jsonschema --schemafile build/config.schema.json build/config.json
 
   package:
     cmds:
       - task: build
-      - docker build --platform linux/${ARCH} -t ${IMAGE_NAMESPACE}/${IMAGE_NAME}:latest  -f ./Dockerfile ./build
+      - docker build --platform linux/${GOARCH} -t ${IMAGE_NAMESPACE}/${IMAGE_NAME}:latest  -f ./Dockerfile ./build
       - docker tag ${IMAGE_NAMESPACE}/${IMAGE_NAME}:latest ${IMAGE_NAMESPACE}/${IMAGE_NAME}:$(git rev-parse HEAD)
       - echo ${IMAGE_NAMESPACE}/${IMAGE_NAME}:$(git rev-parse --short HEAD)
-      - task: _package_test
+      - task: test_package
 
   _push_container_to_aws_ecr:
     cmds:
@@ -49,9 +56,7 @@ tasks:
 
   _generate_deployment_files:
     cmds:
-      - rm -r deployment || true
-      - mkdir deployment
-      - IMAGE_VERSION=$(git rev-parse HEAD) ./.taskfile/bin/hydrate ./templates/deployment.template.k8s.yaml > ./deployment/deployment.k8s.yaml
+      - IMAGE_VERSION=$(git rev-parse HEAD) ./.taskfile/bin/hydrate ./templates/deployment.template.k8s.yaml > ./build/deployment.k8s.yaml
 
   deploy:
     preconditions:
@@ -60,8 +65,9 @@ tasks:
     cmds:
       - task: package
       - task: _generate_deployment_files
+      - grep $(git rev-parse HEAD) ./build/deployment.k8s.yaml
       - task: _push_container_to_aws_ecr
-      - kubectl apply -f ./deployment/deployment.k8s.yaml
+      - kubectl apply -f ./build/deployment.k8s.yaml
 
   deployment-test:
     cmds:
