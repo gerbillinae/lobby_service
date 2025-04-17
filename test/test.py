@@ -10,14 +10,6 @@ from collections.abc import Iterator
 
 DEFAULT_TIMEOUT = 1000
 
-def load_env_file(file_path):
-    with open(file_path, "r") as file:
-        for line in file:
-            if line.startswith("#") or not line.strip():
-                continue
-            key, value = line.strip().split("=", 1)
-            os.environ[key] = value
-
 def read_sse(gen : Iterator[str]):
     buffer = ""
     for line in gen:
@@ -53,11 +45,11 @@ class Test(unittest.TestCase):
     # Basic test of the happy-path
     def test_expected_path(self):
 
-        load_env_file("package.env")
         prefix = os.environ["PATH_PREFIX"]
 
         # URL to send the POST request
         url = Test.address + prefix
+        print(url)
 
         # Wait for server to be ready
         for i in range(5):

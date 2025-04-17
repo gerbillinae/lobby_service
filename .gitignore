@@ -1,6 +1,5 @@
-deployment
-main
-.env
 .idea
-package.env
-.deployment.env
+.taskfile
+deployment
+build
+config.env
