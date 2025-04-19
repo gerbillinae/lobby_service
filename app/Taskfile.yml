@@ -6,3 +6,9 @@ tasks:
       - mkdir build || true
       - go build -o ./build/main ./src
       - cp config.schema.json build/.
+    sources:
+      - src/*.go
+      - config.schema.json
+    generates:
+      - build/main
+      - build/config.schema.json
