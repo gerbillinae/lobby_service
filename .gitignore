@@ -1,5 +1,6 @@
 .idea
 .taskfile
+.task
 deployment
 build
 config.env
