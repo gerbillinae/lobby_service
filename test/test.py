@@ -41,14 +41,15 @@ def load_sse_json_data(msg : str) -> list[Any]:
 
 class Test(unittest.TestCase):
 
+    prefix : str = ""
+    version : str = ""
     address : str = ""
     # Basic test of the happy-path
     def test_expected_path(self):
 
-        prefix = os.environ["PATH_PREFIX"]
 
         # URL to send the POST request
-        url = Test.address + prefix
+        url = Test.address + Test.prefix
         print(url)
 
         # Wait for server to be ready
@@ -58,7 +59,7 @@ class Test(unittest.TestCase):
                 version_response = requests.get(url+"/version", timeout=1)
                 if version_response.status_code == 200:
                     version_data = json.loads(version_response.text)
-                    self.assertEqual(version_data["version"], os.environ["IMAGE_VERSION"])
+                    self.assertEqual(version_data["version"], Test.version)
                     break
             except:
                 print("Failed to connect")
@@ -257,11 +258,22 @@ if __name__ == "__main__":
     # Add arguments
     parser.add_argument("--address", type=str, required=True, help="URL or IP of the server")
 
+    # Add arguments
+    parser.add_argument("--app-config", type=str, required=True, help="config file of the app")
+
     # Parse the arguments
     args, unknown_args = parser.parse_known_args()
 
     # Access the arguments
     print("Address:", args.address)
     Test.address = args.address
+
+    test_app_config = args.app_config
+    # Load the config file
+    with open(test_app_config, "r") as f:
+        config = json.load(f)
+        Test.prefix = config["path_prefix"]
+        Test.version = config["version"]
+        Test.port = config["port"]
 
     unittest.main(argv=[sys.argv[0]]+unknown_args)

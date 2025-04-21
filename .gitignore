@@ -1,6 +1,5 @@
 .idea
 .taskfile
 .task
-deployment
 build
-config.env
+config.yaml

@@ -1,0 +1,9 @@
+aws_account_id: "123456789012"
+aws_region: "eu-west-2"
+image_namespace: "gerbillinae"
+image_name: "lobby_service"
+arch: "amd64"
+app_config:
+  port: "8080"
+  path_prefix: "/lobby"
+  version: "0.1.0"
